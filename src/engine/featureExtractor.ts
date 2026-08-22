@@ -36,12 +36,14 @@ export class FeatureExtractor {
       const invariants: string[] = [];
       const exportedSymbols: string[] = [];
 
-      // 1. Look for explicit claims in comments or docstrings
+      // 1. Look for explicit performance claims, but keep customer-facing output intentionally non-specific.
       for (const line of lines) {
         if (line.includes('%') && (line.includes('reduction') || line.includes('savings') || line.includes('compression') || line.includes('faster') || line.includes('speedup') || line.includes('throughput'))) {
-          const match = line.replace(/^[/*#\s]+/, '').trim();
-          if (match.length > 8 && match.length < 140) {
-            claimsSet.add(match);
+          const lowerLine = line.toLowerCase();
+          if (lowerLine.includes('cost') || lowerLine.includes('compute') || lowerLine.includes('savings') || lowerLine.includes('compression')) {
+            claimsSet.add('Cost-efficient compute architecture');
+          } else {
+            claimsSet.add('Performance optimization characteristics detected');
           }
         }
 
