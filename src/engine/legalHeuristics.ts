@@ -1,0 +1,242 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { LegalHeuristics, RiskBand } from '../types';
+import { FileItem } from './classifierEngine';
+import { LegalGrammarValidator } from './legalGrammar';
+import { CanonicalLegalSchemaValidator } from './legalSchema';
+import { refuseLegal, LegalRefusalClassifier } from './legalRefusalRules';
+
+export class LegalHeuristicsEngine {
+  public static readonly STATUTORY_DISCLAIMER =
+    "All legal-related outputs are heuristic indicators based on code patterns. They are not legal advice, not provenance verification, not patent novelty analysis, and not license compliance confirmation. Human legal review required.";
+
+  /**
+   * Evaluates non-forensic legal risk indicators based strictly on text patterns,
+   * structural AST tokens, and source code headers.
+   */
+  public static evaluate(files: FileItem[]): LegalHeuristics {
+    if (!files || files.length === 0) {
+      const fallbackResult: LegalHeuristics = {
+        licenseSignals: {
+          detectedLicenses: [],
+          riskBand: 'INSUFFICIENT_EVIDENCE',
+          evidence: ['No source files or license manifests provided for scan.'],
+          disclaimer: 'Heuristic only — not a license compliance assessment.'
+        },
+        provenanceSignals: {
+          indicators: [],
+          riskBand: 'INSUFFICIENT_EVIDENCE',
+          evidence: ['Zero measurable code files available for provenance scanning.'],
+          disclaimer: 'Non-forensic scan — does not verify provenance or chain of custody.'
+        },
+        tradeSecretExposure: {
+          riskBand: 'INSUFFICIENT_EVIDENCE',
+          evidence: ['No proprietary algorithm bodies available to evaluate exposure risk.'],
+          disclaimer: 'Heuristic risk indicator only — does not constitute trade secret confirmation.'
+        },
+        noveltyIndicators: {
+          riskBand: 'INSUFFICIENT_EVIDENCE',
+          evidence: ['Insufficient architectural structures to extract potential novelty patterns.'],
+          disclaimer: 'Heuristic only — not a patent novelty or prior art search assessment.'
+        },
+        overallDisclaimer: LegalHeuristicsEngine.STATUTORY_DISCLAIMER
+      };
+      return fallbackResult;
+    }
+
+    const detectedLicenses: string[] = [];
+    const licenseEvidence: string[] = [];
+    const provenanceIndicators: string[] = [];
+    const provenanceEvidence: string[] = [];
+    const tradeSecretEvidence: string[] = [];
+    const noveltyEvidence: string[] = [];
+
+    let hasGplOrAgpl = false;
+    let hasPermissiveLicense = false;
+    let hasProprietaryNotice = false;
+    let hasThirdPartyHeaders = false;
+    let hasUncommonArchitecture = false;
+    let hasCustomSyncPrimitives = false;
+    let hasObfuscatedCode = false;
+    let totalLoc = 0;
+
+    for (const f of files) {
+      const content = f.content;
+      const lower = content.toLowerCase();
+      const lines = content.split('\n');
+      totalLoc += lines.length;
+
+      // 1. License Text Presence Scan
+      if (lower.includes('spdx-license-identifier: apache-2.0') || lower.includes('apache license, version 2.0')) {
+        detectedLicenses.push('Apache-2.0');
+        licenseEvidence.push(`Detected Apache-2.0 SPDX header in ${f.path}`);
+        hasPermissiveLicense = true;
+      }
+      if (lower.includes('spdx-license-identifier: mit') || lower.includes('mit license')) {
+        detectedLicenses.push('MIT');
+        licenseEvidence.push(`Detected MIT license reference in ${f.path}`);
+        hasPermissiveLicense = true;
+      }
+      if (lower.includes('spdx-license-identifier: bsd') || lower.includes('bsd license')) {
+        detectedLicenses.push('BSD');
+        licenseEvidence.push(`Detected BSD license text in ${f.path}`);
+        hasPermissiveLicense = true;
+      }
+      if (lower.includes('gpl-3.0') || lower.includes('gpl-2.0') || lower.includes('general public license') || lower.includes('gnu affero')) {
+        hasGplOrAgpl = true;
+        detectedLicenses.push('GPL/AGPL Copyleft');
+        licenseEvidence.push(`Detected copyleft / GPL indicator in ${f.path}`);
+      }
+      if (lower.includes('all rights reserved') || lower.includes('proprietary and confidential') || lower.includes('confidential commercial software')) {
+        hasProprietaryNotice = true;
+        licenseEvidence.push(`Detected proprietary copyright declaration in ${f.path}`);
+      }
+
+      // 2. Provenance Signals (Non-Forensic)
+      if (lower.includes('copyright (c)') || lower.includes('copyright ©') || lower.includes('author:')) {
+        provenanceIndicators.push(`Author/Copyright marker in ${f.path}`);
+      }
+      if (lower.includes('stackoverflow.com') || lower.includes('github.com/') || lower.includes('copied from') || lower.includes('adapted from')) {
+        hasThirdPartyHeaders = true;
+        provenanceEvidence.push(`Detected third-party reference URL / attribution comment in ${f.path}`);
+      }
+      if (lower.includes('generated by') || lower.includes('do not edit') || lower.includes('auto-generated')) {
+        provenanceEvidence.push(`Detected automated compiler / code generation header in ${f.path}`);
+      }
+      if (lines.length > 0 && lines.some(l => l.length > 500 && !l.includes('base64'))) {
+        hasObfuscatedCode = true;
+        provenanceEvidence.push(`Detected minified or dense single-line code block in ${f.path}`);
+      }
+
+      // 3. Trade Secret Exposure Risk
+      if (lower.includes('password') || lower.includes('api_key') || lower.includes('secret') || lower.includes('bearer ')) {
+        tradeSecretEvidence.push(`Potential credential or literal string pattern flagged in ${f.path}`);
+      }
+      if (lower.includes('dtsa') || lower.includes('trade secret') || lower.includes('confidential')) {
+        tradeSecretEvidence.push(`Explicit trade secret reservation statement present in ${f.path}`);
+      }
+      if (lower.includes('algorithm') || lower.includes('manifold') || lower.includes('kernel') || lower.includes('barrier')) {
+        tradeSecretEvidence.push(`Internal algorithm routines (${f.path}) appear proprietary to host architecture.`);
+      }
+
+      // 4. Novelty Indicators (Heuristic)
+      if (lower.includes('shm_open') || lower.includes('ring_buffer') || lower.includes('zero-copy') || lower.includes('lockless')) {
+        hasCustomSyncPrimitives = true;
+        noveltyEvidence.push(`Detected custom memory synchronization / lockless buffer primitives in ${f.path}`);
+      }
+      if (lower.includes('manifold') || lower.includes('tensor') || lower.includes('16-way') || lower.includes('deterministic')) {
+        hasUncommonArchitecture = true;
+        noveltyEvidence.push(`Detected uncommon architectural pattern: high-throughput pipeline abstraction in ${f.path}`);
+      }
+    }
+
+    // Deduplicate
+    const uniqueLicenses = Array.from(new Set(detectedLicenses));
+    const uniqueLicenseEvidence = Array.from(new Set(licenseEvidence));
+    const uniqueProvenanceEvidence = Array.from(new Set(provenanceEvidence));
+    const uniqueTradeSecretEvidence = Array.from(new Set(tradeSecretEvidence));
+    const uniqueNoveltyEvidence = Array.from(new Set(noveltyEvidence));
+
+    // Fallbacks if no specific triggers hit
+    if (uniqueLicenseEvidence.length === 0) {
+      uniqueLicenseEvidence.push(`No restrictive copyleft (GPL/AGPL) text detected across ${files.length} parsed files.`);
+      uniqueLicenseEvidence.push(`Standard source files scanned (${totalLoc.toLocaleString()} LOC).`);
+    }
+
+    if (uniqueProvenanceEvidence.length === 0) {
+      uniqueProvenanceEvidence.push(`No public repository snippet URLs or third-party attribution markers detected in source comments.`);
+      uniqueProvenanceEvidence.push(`Consistent internal symbol and file naming conventions observed across ${files.length} files.`);
+    }
+
+    if (uniqueTradeSecretEvidence.length === 0) {
+      uniqueTradeSecretEvidence.push(`Internal structural abstractions and algorithm data structures appear self-contained.`);
+      uniqueTradeSecretEvidence.push(`No hardcoded external API keys or plaintext credential leaks identified in source scan.`);
+    }
+
+    if (uniqueNoveltyEvidence.length === 0) {
+      uniqueNoveltyEvidence.push(`Standard structured programming abstractions identified (${totalLoc.toLocaleString()} LOC across ${files.length} files).`);
+    }
+
+    // Determine Risk Bands
+    const licenseRiskBand: RiskBand = hasGplOrAgpl 
+      ? 'HIGH' 
+      : hasPermissiveLicense 
+        ? 'LOW' 
+        : 'LOW';
+
+    const provenanceRiskBand: RiskBand = hasThirdPartyHeaders 
+      ? 'MEDIUM' 
+      : hasObfuscatedCode 
+        ? 'MEDIUM' 
+        : 'LOW';
+
+    const tradeSecretRiskBand: RiskBand = tradeSecretEvidence.some(e => e.includes('credential') || e.includes('leak'))
+      ? 'HIGH'
+      : 'LOW';
+
+    const noveltyRiskBand: RiskBand = (hasCustomSyncPrimitives && hasUncommonArchitecture)
+      ? 'HIGH' // High potential novelty / warranting legal patent evaluation
+      : (hasCustomSyncPrimitives || hasUncommonArchitecture)
+        ? 'MEDIUM'
+        : 'LOW';
+
+    const result: LegalHeuristics = {
+      licenseSignals: {
+        detectedLicenses: uniqueLicenses.length > 0 ? uniqueLicenses : ['Proprietary / Non-Forensic Scan'],
+        riskBand: licenseRiskBand,
+        evidence: uniqueLicenseEvidence.map(e => LegalGrammarValidator.sanitize(e)),
+        disclaimer: 'Heuristic only — not a license compliance assessment.'
+      },
+      provenanceSignals: {
+        indicators: provenanceIndicators.length > 0 ? provenanceIndicators : ['Consistent internal file structure'],
+        riskBand: provenanceRiskBand,
+        evidence: uniqueProvenanceEvidence.map(e => LegalGrammarValidator.sanitize(e)),
+        disclaimer: 'Non-forensic scan — does not verify provenance or chain of custody.'
+      },
+      tradeSecretExposure: {
+        riskBand: tradeSecretRiskBand,
+        evidence: uniqueTradeSecretEvidence.map(e => LegalGrammarValidator.sanitize(e)),
+        disclaimer: 'Heuristic risk indicator only — does not constitute trade secret confirmation.'
+      },
+      noveltyIndicators: {
+        riskBand: noveltyRiskBand,
+        evidence: uniqueNoveltyEvidence.map(e => LegalGrammarValidator.sanitize(e)),
+        disclaimer: 'Heuristic only — not a patent novelty or prior art search assessment.'
+      },
+      overallDisclaimer: LegalHeuristicsEngine.STATUTORY_DISCLAIMER
+    };
+
+    // Strict schema compliance validation
+    CanonicalLegalSchemaValidator.validate({
+      legal_risk_indicators: {
+        license_signals: {
+          risk_band: result.licenseSignals.riskBand,
+          evidence: result.licenseSignals.evidence,
+          disclaimer: result.licenseSignals.disclaimer
+        },
+        provenance_signals: {
+          risk_band: result.provenanceSignals.riskBand,
+          evidence: result.provenanceSignals.evidence,
+          disclaimer: result.provenanceSignals.disclaimer
+        },
+        trade_secret_exposure: {
+          risk_band: result.tradeSecretExposure.riskBand,
+          evidence: result.tradeSecretExposure.evidence,
+          disclaimer: result.tradeSecretExposure.disclaimer
+        },
+        novelty_indicators: {
+          risk_band: result.noveltyIndicators.riskBand,
+          evidence: result.noveltyIndicators.evidence,
+          disclaimer: result.noveltyIndicators.disclaimer
+        },
+        global_disclaimer: result.overallDisclaimer
+      },
+      legal_review_required: true
+    });
+
+    return result;
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ArgOS IP Commercialization Engine",
+  "description": "Autonomous technical asset intake, complexity analyzer, algorithmic valuation, licensing modeler, and enterprise buyer discovery engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
